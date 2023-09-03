@@ -2,22 +2,28 @@ const db = require("./db");
 const helper = require("../helper");
 const config = require("../config");
 
-async function getMultiple(page = 1) {
-  const offset = helper.getOffset(page, config.listPerPage);
+async function get(req) {
+  const id = req.params.id;
+  const siteId = req.query.site || config.defaultSiteID;
   const rows = await db.query(
-    `SELECT * from posts LIMIT ${offset},${config.listPerPage}`
+    `SELECT * from posts where id=${id} and siteid=${siteId} limit 1`
   );
-  const data = helper.emptyOrRows(rows);
-  const meta = { page };
-
-  return {
-    data,
-    meta,
-  };
+  if (rows) {
+    return rows[0];
+  } else {
+    console.error(`undefined post id `);
+    return false;
+  }
 }
 
 async function search(req) {
-  const { q, tab = "relevance", page = 1, pagesize = 10, site = 1 } = req.query;
+  const {
+    q,
+    tab = "relevance",
+    page = 1,
+    pagesize = 10,
+    site = config.defaultSiteID,
+  } = req.query;
 
   const offset = helper.getOffset(page, pagesize);
   const orderBy = {
@@ -46,6 +52,6 @@ async function search(req) {
 }
 
 module.exports = {
-  getMultiple,
+  get,
   search,
 };

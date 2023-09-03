@@ -6,5 +6,6 @@ const config = {
     database: "ubuntu",
     connectTimeout: 60000,
   },
+  defaultSiteID: 301,
 };
 module.exports = config;
