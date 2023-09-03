@@ -1,11 +1,13 @@
+require('dotenv').config()
+
 const config = {
   db: {
-    host: "192.168.5.150",
-    user: "root",
-    password: "",
-    database: "ubuntu",
-    connectTimeout: 60000,
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_DATABASE,
+    connectTimeout: process.env.DB_TIMEOUT,
   },
-  defaultSiteID: 301,
+  defaultSiteID: process.env.DEFAULT_SITE_ID,
 };
 module.exports = config;
