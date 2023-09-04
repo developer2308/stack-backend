@@ -13,9 +13,8 @@ app.use(
     extended: true,
   })
 );
-app.use("/assets", express.static("public/assets"));
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "/public/index.html"));
+  res.send("Hello world!");
 });
 app.use("/posts", postsRouter);
 /* Error handler middleware */
