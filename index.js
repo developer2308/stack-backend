@@ -1,15 +1,21 @@
+require("dotenv").config();
+
 const express = require("express");
+const path = require("path");
+var cors = require("cors");
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 const postsRouter = require("./routes/posts");
 app.use(express.json());
+app.use(cors());
 app.use(
   express.urlencoded({
     extended: true,
   })
 );
+app.use("/assets", express.static("public/assets"));
 app.get("/", (req, res) => {
-  res.json({ message: "ok" });
+  res.sendFile(path.join(__dirname, "/public/index.html"));
 });
 app.use("/posts", postsRouter);
 /* Error handler middleware */
