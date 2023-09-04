@@ -41,9 +41,13 @@ async function search(req) {
 
   const voteCountTable = `select sum(case when votetypeid=2 then 1 when votetypeid=3 then -1 else 0 end) VoteCount, PostId from votes where siteid=${site} group by postid`;
   const query = `SELECT a.*, b.Reputation, b.DisplayName, c.VoteCount from posts a left join users b on a.OwnerUserId=b.id and b.siteid=${site} left join (${voteCountTable}) c on a.id=c.postid ${where} ${orderBy[tab]} ${limit}`;
+  const countQuery = `SELECT count(*) total from posts a ${where}`;
+  const total = await db.queryCount(countQuery);
+
   const rows = await db.query(query);
   const data = helper.emptyOrRows(rows);
-  const meta = { page };
+  
+  const meta = { page, total };
 
   return {
     data,
