@@ -112,7 +112,7 @@ async function search(req) {
   };
   const params = [];
 
-  let where = `where a.PostTypeId=1 and a.siteid=? and a.title is not null and a.deletiondate is null `;
+  let where = `where a.posttypeid in (1, 2) and a.deletiondate is null and a.siteid=? `;
   params.push(site);
 
   if (q) {
@@ -126,12 +126,33 @@ async function search(req) {
   const limit = `LIMIT ?,?`;
   params.push(offset, pagesize);
 
-  const voteCountTable = `select sum(case when votetypeid=2 then 1 when votetypeid=3 then -1 else 0 end) VoteCount, PostId from votes where siteid=? group by postid`;
-  const query = `SELECT a.*, b.Reputation, b.DisplayName, c.VoteCount from posts a left join users b on a.OwnerUserId=b.id and b.siteid=? left join (${voteCountTable}) c on a.id=c.postid ${where} ${orderBy[tab]} ${limit}`;
-  const queryParams = [site, site, ...params];
+  const query = `SELECT a.* from posts a ${where} ${orderBy[tab]} ${limit}`;
+  const queryParams = [...params];
 
   const rows = await db.query(query, queryParams);
   const data = helper.emptyOrRows(rows);
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const usersQuery = `select * from users where id=${row["OwnerUserId"]} and siteid=${row["SiteId"]} limit 1`;
+    const users = await db.query(usersQuery);
+    if (users && users.length) {
+      row["Reputation"] = users[0]["Reputation"];
+      row["DisplayName"] = users[0]["DisplayName"];
+    }
+
+    if (row["ParentId"]) {
+      const parentQuery = `select * from posts where siteid=${row["SiteId"]} and id=${row["ParentId"]} limit 1`;
+      const parents = await db.query(parentQuery);
+      if (parents && parents.length) {
+        row["parent"] = {
+          Id: parents[0]["Id"],
+          Title: parents[0]["Title"],
+          AcceptedAnswerId: parents[0]["AcceptedAnswerId"],
+        };
+      }
+    }
+  }
 
   const meta = { page, total };
 
