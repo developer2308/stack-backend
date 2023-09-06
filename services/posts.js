@@ -6,7 +6,8 @@ async function get(req) {
   const id = req.params.id;
   const siteId = req.query.site || config.defaultSiteID;
   const rows = await db.query(
-    `SELECT * from posts where id=${id} and siteid=${siteId} limit 1`
+    "SELECT * from posts where id=? and siteid=? limit 1",
+    [id, siteId]
   );
   if (rows && rows.length) {
     const post = rows[0];
@@ -109,19 +110,27 @@ async function search(req) {
     newest: `order by a.creationdate desc`,
     active: `order by a.lastactivitydate desc`,
   };
-  let where = `where a.PostTypeId=1 and a.siteid=${site} and a.title is not null and a.deletiondate is null `;
+  const params = [];
+
+  let where = `where a.PostTypeId=1 and a.siteid=? and a.title is not null and a.deletiondate is null `;
+  params.push(site);
+
   if (q) {
-    where += `and (a.title like '%${q}%' or a.body like '%${q}%')`;
+    where += `and (a.title like ? or a.body like ?)`;
+    params.push(`%${q}%`, `%${q}%`);
   }
 
-  const limit = `LIMIT ${offset},${pagesize}`;
-
-  const voteCountTable = `select sum(case when votetypeid=2 then 1 when votetypeid=3 then -1 else 0 end) VoteCount, PostId from votes where siteid=${site} group by postid`;
-  const query = `SELECT a.*, b.Reputation, b.DisplayName, c.VoteCount from posts a left join users b on a.OwnerUserId=b.id and b.siteid=${site} left join (${voteCountTable}) c on a.id=c.postid ${where} ${orderBy[tab]} ${limit}`;
   const countQuery = `SELECT count(*) total from posts a ${where}`;
-  const total = await db.queryCount(countQuery);
+  const total = await db.queryCount(countQuery, params);
 
-  const rows = await db.query(query);
+  const limit = `LIMIT ?,?`;
+  params.push(offset, pagesize);
+
+  const voteCountTable = `select sum(case when votetypeid=2 then 1 when votetypeid=3 then -1 else 0 end) VoteCount, PostId from votes where siteid=? group by postid`;
+  const query = `SELECT a.*, b.Reputation, b.DisplayName, c.VoteCount from posts a left join users b on a.OwnerUserId=b.id and b.siteid=? left join (${voteCountTable}) c on a.id=c.postid ${where} ${orderBy[tab]} ${limit}`;
+  const queryParams = [site, site, ...params];
+
+  const rows = await db.query(query, queryParams);
   const data = helper.emptyOrRows(rows);
 
   const meta = { page, total };
