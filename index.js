@@ -6,6 +6,7 @@ var cors = require("cors");
 const app = express();
 const port = process.env.PORT || 3000;
 const postsRouter = require("./routes/posts");
+const sitesRouter = require("./routes/sites");
 app.use(express.json());
 app.use(cors());
 app.use(
@@ -17,6 +18,7 @@ app.get("/", (req, res) => {
   res.send("Hello world!");
 });
 app.use("/posts", postsRouter);
+app.use("/sites", sitesRouter);
 /* Error handler middleware */
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
