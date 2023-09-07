@@ -105,8 +105,8 @@ async function search(req) {
 
   const offset = helper.getOffset(page, pagesize);
   const orderBy = {
-    score: `order by a.score desc`,
-    relevance: `order by a.score desc`,
+    score: `order by a.score desc, a.posttypeid desc, a.creationdate desc`,
+    relevance: `order by viewcount desc, creationdate asc`,
     newest: `order by a.creationdate desc`,
     active: `order by a.lastactivitydate desc`,
   };
@@ -116,8 +116,15 @@ async function search(req) {
   params.push(site);
 
   if (q) {
-    where += `and (a.title like ? or a.body like ?)`;
-    params.push(`%${q}%`, `%${q}%`);
+    const words = helper.splitToWords(q);
+    const subWhere = [];
+    for (let i = 0; i < words.length; i++) {
+      subWhere.push(
+        `(a.title like ? or REGEXP_REPLACE(a.body, '<\/?[^>]+(>|$)', '') like ?)`
+      );
+      params.push(`%${words[i]}%`, `%${words[i]}%`);
+    }
+    where += `and (${subWhere.join(" and ")}) `;
   }
 
   const countQuery = `SELECT count(*) total from posts a ${where}`;
@@ -126,14 +133,20 @@ async function search(req) {
   const limit = `LIMIT ?,?`;
   params.push(offset, pagesize);
 
-  const query = `SELECT a.* from posts a ${where} ${orderBy[tab]} ${limit}`;
-  const queryParams = [...params];
+  let query = `SELECT a.* from posts a ${where} ${orderBy[tab]} ${limit}`;
+  let queryParams = [...params];
 
+  if (tab === "relevance") {
+    query = `SELECT a.* from posts a ${where} ${orderBy[tab]} ${limit}`;
+    queryParams = [...params];
+  }
+  
   const rows = await db.query(query, queryParams);
   const data = helper.emptyOrRows(rows);
 
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
+    row["Body"] = helper.bodyForList(row["Body"], q);
     const usersQuery = `select * from users where id=${row["OwnerUserId"]} and siteid=${row["SiteId"]} limit 1`;
     const users = await db.query(usersQuery);
     if (users && users.length) {
