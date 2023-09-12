@@ -1,6 +1,15 @@
 const db = require("./db");
 const helper = require("../helper");
 const config = require("../config");
+const { Client } = require("@elastic/elasticsearch");
+
+const client = new Client({
+  node: process.env.ELASTICSEARCH_URL,
+  auth: {
+    username: process.env.ELASTICSEARCH_USERNAME,
+    password: process.env.ELASTICSEARCH_PASSWORD,
+  },
+});
 
 async function get(req) {
   const id = req.params.id;
@@ -11,6 +20,12 @@ async function get(req) {
   );
   if (rows && rows.length) {
     const post = rows[0];
+    post["owner"] = {
+      DisplayName: "",
+      Reputation: 0,
+      Badges: [0, 0, 0],
+    };
+
     const ownerQuery = `SELECT DisplayName, Reputation from users a where a.id=${post["OwnerUserId"]} and siteid=${siteId}`;
     const ownerRows = await db.query(ownerQuery);
     if (ownerRows && ownerRows.length) {
@@ -140,7 +155,7 @@ async function search(req) {
     query = `SELECT a.* from posts a ${where} ${orderBy[tab]} ${limit}`;
     queryParams = [...params];
   }
-  
+
   const rows = await db.query(query, queryParams);
   const data = helper.emptyOrRows(rows);
 
@@ -175,7 +190,133 @@ async function search(req) {
   };
 }
 
+async function searchElastic(req) {
+  const {
+    q,
+    tab = "relevance",
+    page = 1,
+    pagesize = 15,
+    site = config.defaultSiteID,
+  } = req.query;
+
+  const offset = helper.getOffset(page, pagesize);
+  const orderBy = {
+    newest: [{ creationdate: { order: "desc" } }],
+    active: [{ lastactivitydate: { order: "desc" } }],
+    score: [{ score: { order: "desc" } }],
+  };
+
+  const searchJson = {
+    index: "stackexchange_4",
+    query: {
+      bool: {
+        should: [{ match: { title: q } }, { match: { striped_body: q } }],
+        filter: [
+          {
+            bool: {
+              must: [
+                {
+                  term: {
+                    siteid: site,
+                  },
+                },
+                {
+                  bool: {
+                    must_not: {
+                      exists: {
+                        field: "deletiondate",
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        minimum_should_match: 1,
+      },
+    },
+    from: offset,
+    size: pagesize,
+    highlight: {
+      number_of_fragments: 0,
+      fragment_size: 150,
+      fields: {
+        striped_body: {
+          pre_tags: ['<span class="font-bold">'],
+          post_tags: ["</span>"],
+        },
+        title: {
+          number_of_fragments: 0,
+        },
+      },
+    },
+  };
+
+  if (orderBy[tab]) {
+    searchJson["sort"] = orderBy[tab];
+  }
+
+  const response = await client.search(searchJson);
+  const total = response["hits"]["total"]["value"];
+  const data = [];
+  const fields = [
+    "Id",
+    "ParentId",
+    "SiteId",
+    "Title",
+    "AcceptedAnswerId",
+    "OwnerUserId",
+    "Score",
+    "AnswerCount",
+    "ViewCount",
+    "ClosedDate",
+    "Tags",
+    "CreationDate",
+    "PostTypeId",
+    "DeletionDate",
+  ];
+  for (let i = 0; i < response["hits"]["hits"].length; i++) {
+    const row = response["hits"]["hits"][i];
+    const post = {};
+    fields.forEach(
+      (field) => (post[field] = row["_source"][field.toLowerCase()])
+    );
+    post["Body"] = row["highlight"]?.["striped_body"]
+      ? row["highlight"]?.["striped_body"]
+      : row["striped_body"];
+
+    const usersQuery = `select * from users where id=${post["OwnerUserId"]} and siteid=${post["SiteId"]} limit 1`;
+    const users = await db.query(usersQuery);
+    if (users && users.length) {
+      post["Reputation"] = users[0]["Reputation"];
+      post["DisplayName"] = users[0]["DisplayName"];
+    }
+
+    if (post["ParentId"]) {
+      const parentQuery = `select * from posts where siteid=${post["SiteId"]} and id=${post["ParentId"]} limit 1`;
+      const parents = await db.query(parentQuery);
+      if (parents && parents.length) {
+        post["parent"] = {
+          Id: parents[0]["Id"],
+          Title: parents[0]["Title"],
+          AcceptedAnswerId: parents[0]["AcceptedAnswerId"],
+        };
+      }
+    }
+    data.push(post);
+  }
+
+  const meta = { page, total };
+
+  return {
+    meta,
+    data,
+  };
+}
+
 module.exports = {
   get,
   search,
+  searchElastic,
 };
